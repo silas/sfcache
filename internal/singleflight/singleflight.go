@@ -4,7 +4,7 @@
 
 // Package singleflight provides a duplicate function call suppression
 // mechanism.
-package sfcache
+package singleflight
 
 import "sync"
 
