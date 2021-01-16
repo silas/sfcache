@@ -9,35 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_Config(t *testing.T) {
-	check := func(c *Config) error {
-		_, err := New(c)
-		return err
-	}
-	load := func(ctx context.Context, key interface{}) (interface{}, error) {
-		return nil, nil
-	}
+func TestNew(t *testing.T) {
+	_, err := New(0, nil)
+	require.EqualError(t, err, "size must be 1 or greater")
 
-	require.EqualError(t, check(nil), "config required")
-	require.EqualError(t, check(&Config{}), "config.Load required")
-	require.NoError(t, check(&Config{Load: load}))
-	require.EqualError(t, check(&Config{
-		Load: load,
-		Capacity: -1,
-	}), "config.Capacity must be positive")
-	require.EqualError(t, check(&Config{
-		Load: load,
-		MaxAge: -1,
-	}), "config.MaxAge must be positive")
-}
+	_, err = New(10, nil)
+	require.EqualError(t, err, "loader is required")
 
-func TestNew_NoMaxAge(t *testing.T) {
-	var seq int
-	c, err := New(&Config{
-		Load: func(ctx context.Context, key interface{}) (interface{}, error) {
-			seq++
-			return fmt.Sprintf("%s-%d", key, seq), nil
-		},
+	seq := 0
+	ttl := func() time.Time { return time.Now().Add(50 * time.Millisecond) }
+
+	c, err := New(1000, func(ctx context.Context, key interface{}) (interface{}, time.Time, error) {
+		seq++
+		return fmt.Sprintf("%s-%d", key, seq), ttl(), nil
 	})
 	require.NoError(t, err)
 
@@ -45,11 +29,11 @@ func TestNew_NoMaxAge(t *testing.T) {
 	require.False(t, found)
 	require.Nil(t, v)
 
-	v, err = c.Get(context.Background(), "foo")
+	v, err = c.Load(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "foo-1", v)
 
-	v, err = c.Get(context.Background(), "foo")
+	v, err = c.Load(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "foo-1", v)
 
@@ -57,43 +41,39 @@ func TestNew_NoMaxAge(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "foo-1", v)
 
-	v, err = c.Get(context.Background(), "bar")
+	v, err = c.Load(context.Background(), "bar")
 	require.NoError(t, err)
 	require.Equal(t, "bar-2", v)
 
-	v, err = c.Get(context.Background(), "foo")
+	v, err = c.Load(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "foo-1", v)
 
-	c.Remove("foo")
+	c.Delete("foo")
 
-	v, err = c.Get(context.Background(), "foo")
+	v, found = c.Get("foo")
+	require.Nil(t, v)
+	require.False(t, found)
+
+	v, err = c.Load(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "foo-3", v)
-}
-
-func TestNew_MaxAge(t *testing.T) {
-	var seq int
-	c, err := New(&Config{
-		Load: func(ctx context.Context, key interface{}) (interface{}, error) {
-			seq++
-			return fmt.Sprintf("%s-%d", key, seq), nil
-		},
-		MaxAge: 50 * time.Millisecond,
-	})
-	require.NoError(t, err)
-
-	v, err := c.Get(context.Background(), "foo")
-	require.NoError(t, err)
-	require.Equal(t, "foo-1", v)
-
-	v, err = c.Get(context.Background(), "foo")
-	require.NoError(t, err)
-	require.Equal(t, "foo-1", v)
 
 	time.Sleep(100 * time.Millisecond)
 
-	v, err = c.Get(context.Background(), "foo")
+	v, err = c.Load(context.Background(), "foo")
 	require.NoError(t, err)
-	require.Equal(t, "foo-2", v)
+	require.Equal(t, "foo-4", v)
+
+	ttl = func() time.Time { return NoExpireTime }
+
+	v, err = c.Load(context.Background(), "happy")
+	require.NoError(t, err)
+	require.Equal(t, "happy-5", v)
+
+	time.Sleep(100 * time.Millisecond)
+
+	v, err = c.Load(context.Background(), "happy")
+	require.NoError(t, err)
+	require.Equal(t, "happy-5", v)
 }
