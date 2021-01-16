@@ -5,7 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
+
+	"github.com/silas/sfcache/internal/singleflight"
 )
 
 var (
@@ -22,7 +24,7 @@ type Loader func(ctx context.Context, key interface{}) (interface{}, time.Time, 
 // Cache is an LRU cache with cache filling functionality.
 type Cache struct {
 	lru   *lru.Cache
-	group *Group
+	group *singleflight.Group
 	load  Loader
 }
 
@@ -46,9 +48,9 @@ func New(size int, load Loader) (*Cache, error) {
 	}
 
 	cache := &Cache{
-		lru:    l,
-		group:  &Group{},
-		load:   load,
+		lru:   l,
+		group: &singleflight.Group{},
+		load:  load,
 	}
 	return cache, nil
 }
