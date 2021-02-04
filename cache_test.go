@@ -18,10 +18,13 @@ func TestNew(t *testing.T) {
 
 	seq := 0
 	ttl := func() time.Time { return time.Now().Add(50 * time.Millisecond) }
-
-	c, err := New(1000, func(ctx context.Context, key interface{}) (interface{}, time.Time, error) {
+	value := func(ctx context.Context, key interface{}) (interface{}, time.Time, error) {
 		seq++
 		return fmt.Sprintf("%s-%d", key, seq), ttl(), nil
+	}
+
+	c, err := New(1000, func(ctx context.Context, key interface{}) (interface{}, time.Time, error) {
+		return value(ctx, key)
 	})
 	require.NoError(t, err)
 
@@ -76,4 +79,23 @@ func TestNew(t *testing.T) {
 	v, err = c.Load(context.Background(), "happy")
 	require.NoError(t, err)
 	require.Equal(t, "happy-5", v)
+
+	value = func(ctx context.Context, key interface{}) (interface{}, time.Time, error) {
+		seq++
+		return NoValue, ttl(), nil
+	}
+
+	require.Equal(t, 5, seq)
+
+	v, err = c.Load(context.Background(), "nil")
+	require.Equal(t, ErrNotFound, err)
+	require.Nil(t, v)
+
+	require.Equal(t, 6, seq)
+
+	v, err = c.Load(context.Background(), "nil")
+	require.Equal(t, ErrNotFound, err)
+	require.Nil(t, v)
+
+	require.Equal(t, 6, seq)
 }
